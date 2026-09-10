@@ -335,7 +335,7 @@ function ChatPage() {
             <PromptInputFooter>
               <PromptInputTools>
                 <Select value={persona} onValueChange={setPersona}>
-                  <SelectTrigger size="sm" className="w-36">
+                  <SelectTrigger className="w-36">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -347,7 +347,7 @@ function ChatPage() {
                   </SelectContent>
                 </Select>
               </PromptInputTools>
-              <PromptInputSubmit status={busy ? "streaming" : undefined} />
+              <PromptInputSubmit status={status} />
             </PromptInputFooter>
           </PromptInput>
         </div>
