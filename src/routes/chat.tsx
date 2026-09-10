@@ -219,7 +219,6 @@ function ChatPage() {
     );
   }
 
-  const busy = status === "submitted" || status === "streaming";
 
   return (
     <main className="flex h-screen overflow-hidden">
