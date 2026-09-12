@@ -377,15 +377,41 @@ function ChatPage() {
                 icon={<NovaMark size={56} className="rise" />}
                 title="Ask Nova anything"
                 description="Answers stream in as they're written, and every chat is saved to your account."
-              />
+              >
+                <NovaMark size={56} className="rise" />
+                <div className="space-y-1">
+                  <h3 className="font-display text-lg font-semibold">Ask Nova anything</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Answers stream in as they're written, and every chat is saved to your account.
+                  </p>
+                </div>
+                <div className="mt-2 grid w-full max-w-md gap-2 sm:grid-cols-2">
+                  {SUGGESTIONS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => void onSubmit({ text: s } as PromptInputMessage)}
+                      className="rounded-2xl border border-border bg-surface/60 px-4 py-3 text-left text-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:bg-accent"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </ConversationEmptyState>
             ) : (
               messages.map((message) => (
-                <Message from={message.role} key={message.id}>
+                <Message from={message.role} key={message.id} className="rise">
                   <MessageContent>
                     <MessageResponse>{textOf(message)}</MessageResponse>
                   </MessageContent>
                 </Message>
               ))
+            )}
+            {status === "submitted" && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <NovaMark size={18} />
+                <Shimmer>Nova is thinking…</Shimmer>
+              </div>
             )}
             {error && (
               <p className="text-center text-sm text-destructive">
@@ -397,14 +423,15 @@ function ChatPage() {
         </Conversation>
 
         <div className="mx-auto w-full max-w-3xl px-4 pb-6">
-          <PromptInput onSubmit={onSubmit}>
-            <PromptInputBody>
-              <PromptInputTextarea placeholder="Message Nova…" />
-            </PromptInputBody>
+          <PromptInput
+            onSubmit={onSubmit}
+            className="rounded-3xl border-border bg-surface/70 backdrop-blur-xl transition-shadow duration-300 focus-within:glow-ring"
+          >
+            <PromptInputTextarea placeholder="Message Nova…" />
             <PromptInputFooter>
               <PromptInputTools>
                 <Select value={persona} onValueChange={setPersona}>
-                  <SelectTrigger className="w-36">
+                  <SelectTrigger className="w-36 rounded-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -419,7 +446,11 @@ function ChatPage() {
               <PromptInputSubmit status={status} />
             </PromptInputFooter>
           </PromptInput>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Nova can make mistakes. Double-check anything important.
+          </p>
         </div>
+
       </section>
     </main>
   );
