@@ -1,7 +1,16 @@
 import { useChat } from "@ai-sdk/react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { Loader2, LogOut, MessageSquarePlus, Palette, Settings, Trash2 } from "lucide-react";
+import {
+  Loader2,
+  LogOut,
+  MessageSquarePlus,
+  Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
