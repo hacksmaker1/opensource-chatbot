@@ -221,65 +221,110 @@ function ChatPage() {
 
 
   return (
-    <main className="flex h-screen overflow-hidden">
-      <aside className="hidden w-72 shrink-0 flex-col border-r border-border bg-surface/60 p-4 md:flex">
-        <Link to="/">
-          <NovaWordmark />
-        </Link>
-        <Button className="mt-5 w-full" onClick={newChat}>
-          <MessageSquarePlus className="size-4" />
-          New chat
-        </Button>
-        <div className="mt-4 flex-1 space-y-1 overflow-y-auto">
-          {chats.map((chat) => (
-            <div
-              key={chat.id}
-              className={`group flex items-center gap-1 rounded-xl px-3 py-2 text-sm transition-colors ${
-                activeChat === chat.id ? "bg-accent text-foreground" : "hover:bg-accent/60"
-              }`}
+    <main className="relative flex h-screen overflow-hidden">
+      {/* Mobile scrim */}
+      <button
+        type="button"
+        aria-label="Close menu"
+        onClick={() => setSidebarOpen(false)}
+        className={`fixed inset-0 z-30 bg-background/70 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
+          sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      />
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-r border-border bg-surface/80 backdrop-blur-xl transition-all duration-300 ease-out md:relative md:z-auto md:translate-x-0 ${
+          sidebarOpen
+            ? "translate-x-0 md:w-72 md:opacity-100"
+            : "-translate-x-full md:w-0 md:border-r-0 md:opacity-0"
+        }`}
+      >
+        <div className="flex w-72 flex-1 flex-col p-4">
+          <div className="flex items-center justify-between">
+            <Link to="/">
+              <NovaWordmark />
+            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Hide conversations"
+              onClick={() => setSidebarOpen(false)}
             >
-              <button
-                type="button"
-                className="flex-1 truncate text-left"
-                onClick={() => void openChat(chat.id)}
+              <PanelLeftClose className="size-4" />
+            </Button>
+          </div>
+          <Button className="mt-5 w-full" onClick={newChat}>
+            <MessageSquarePlus className="size-4" />
+            New chat
+          </Button>
+          <div className="mt-4 flex-1 space-y-1 overflow-y-auto">
+            {chats.map((chat) => (
+              <div
+                key={chat.id}
+                className={`group flex items-center gap-1 rounded-xl px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5 ${
+                  activeChat === chat.id ? "bg-accent text-foreground" : "hover:bg-accent/60"
+                }`}
               >
-                {chat.title}
-              </button>
-              <button
-                type="button"
-                aria-label="Delete chat"
-                className="opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() => void deleteChat(chat.id)}
-              >
-                <Trash2 className="size-4 text-muted-foreground hover:text-destructive" />
-              </button>
-            </div>
-          ))}
-          {chats.length === 0 && (
-            <p className="px-3 py-2 text-sm text-muted-foreground">No conversations yet.</p>
-          )}
+                <button
+                  type="button"
+                  className="flex-1 truncate text-left"
+                  onClick={() => {
+                    void openChat(chat.id);
+                    if (isMobile) setSidebarOpen(false);
+                  }}
+                >
+                  {chat.title}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete chat"
+                  className="opacity-0 transition-opacity group-hover:opacity-100"
+                  onClick={() => void deleteChat(chat.id)}
+                >
+                  <Trash2 className="size-4 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
+            ))}
+            {chats.length === 0 && (
+              <p className="px-3 py-2 text-sm text-muted-foreground">No conversations yet.</p>
+            )}
+          </div>
+          <SettingsDialog
+            theme={theme}
+            onTheme={saveTheme}
+            persona={persona}
+            onPersona={setPersona}
+            displayName={displayName}
+            onDisplayName={setDisplayName}
+            onSaveName={saveName}
+            savingName={savingName}
+          />
         </div>
-        <SettingsDialog
-          theme={theme}
-          onTheme={saveTheme}
-          persona={persona}
-          onPersona={setPersona}
-          displayName={displayName}
-          onDisplayName={setDisplayName}
-          onSaveName={saveName}
-          savingName={savingName}
-        />
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-border px-4">
-          <div className="flex items-center gap-2 md:hidden">
-            <NovaMark size={26} />
-            <span className="font-display font-semibold">Nova</span>
+        <header className="flex h-16 items-center justify-between gap-2 border-b border-border px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={sidebarOpen ? "Hide conversations" : "Show conversations"}
+              onClick={() => setSidebarOpen((open) => !open)}
+            >
+              {sidebarOpen ? (
+                <PanelLeftClose className="size-4" />
+              ) : (
+                <PanelLeftOpen className="size-4" />
+              )}
+            </Button>
+            <div className="flex items-center gap-2 md:hidden">
+              <NovaMark size={24} />
+              <span className="font-display font-semibold">Nova</span>
+            </div>
+            <span className="hidden truncate text-sm text-muted-foreground md:block">
+              {activeChat ? chats.find((c) => c.id === activeChat)?.title : "New conversation"}
+            </span>
           </div>
-          <span className="hidden text-sm text-muted-foreground md:block">
-            {activeChat ? chats.find((c) => c.id === activeChat)?.title : "New conversation"}
-          </span>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" className="md:hidden" onClick={newChat}>
               <MessageSquarePlus className="size-4" />
