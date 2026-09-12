@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/select";
 import { Sparkle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/lib/theme-provider";
 import { THEMES, isThemeId } from "@/lib/themes";
