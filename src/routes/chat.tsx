@@ -342,9 +342,17 @@ function ChatPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="md:hidden" onClick={newChat}>
-              <MessageSquarePlus className="size-4" />
-            </Button>
+            {!sidebarOpen && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="New chat"
+                className="md:hidden"
+                onClick={newChat}
+              >
+                <MessageSquarePlus className="size-4" />
+              </Button>
+            )}
             <div className="md:hidden">
               <SettingsDialog
                 theme={theme}
@@ -359,6 +367,7 @@ function ChatPage() {
               />
             </div>
           </div>
+
         </header>
 
         <Conversation>
