@@ -30,7 +30,9 @@ import {
   PromptInputTools,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import { NovaMark, NovaWordmark } from "@/components/nova/brand";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -76,6 +78,14 @@ const PERSONAS = [
   { id: "creative", name: "Creative" },
   { id: "technical", name: "Technical" },
 ];
+
+const SUGGESTIONS: string[] = [
+  "Explain a tricky idea simply",
+  "Help me plan my week",
+  "Draft a friendly email",
+  "Give me a creative idea",
+];
+
 
 function textOf(message: UIMessage) {
   return message.parts
