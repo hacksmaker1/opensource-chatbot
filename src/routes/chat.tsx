@@ -87,6 +87,12 @@ function ChatPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setSidebarOpen(!isMobile);
+  }, [isMobile]);
 
   const [chats, setChats] = useState<ChatRow[]>([]);
   const [activeChat, setActiveChat] = useState<string | null>(null);
