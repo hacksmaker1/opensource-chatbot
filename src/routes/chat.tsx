@@ -1,15 +1,18 @@
 import { useChat } from "@ai-sdk/react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import {
+  ImagePlus,
   Loader2,
   LogOut,
   MessageSquarePlus,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
+  Paperclip,
   Settings,
   Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -23,16 +26,17 @@ import {
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
-  PromptInputBody,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputAttachments,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { NovaMark, NovaWordmark } from "@/components/nova/brand";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,6 +46,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -71,6 +86,7 @@ export const Route = createFileRoute("/chat")({
 });
 
 type ChatRow = { id: string; title: string; updated_at: string };
+type AttachmentMeta = { filename: string; mediaType: string };
 
 const PERSONAS = [
   { id: "balanced", name: "Balanced" },
@@ -86,12 +102,82 @@ const SUGGESTIONS: string[] = [
   "Give me a creative idea",
 ];
 
-
 function textOf(message: UIMessage) {
   return message.parts
     .filter((part): part is { type: "text"; text: string } => part.type === "text")
     .map((part) => part.text)
     .join("");
+}
+
+function filesOf(message: UIMessage): FileUIPart[] {
+  return message.parts.filter((part): part is FileUIPart => part.type === "file");
+}
+
+function AttachmentChips({ files }: { files: { filename?: string; mediaType: string }[] }) {
+  if (files.length === 0) return null;
+  return (
+    <div className="mb-1 flex flex-wrap gap-1.5">
+      {files.map((f, i) => (
+        <span
+          key={`${f.filename}-${i}`}
+          className="inline-flex items-center gap-1 rounded-full border border-border bg-background/60 px-2 py-0.5 text-xs text-muted-foreground"
+        >
+          <Paperclip className="size-3" />
+          {f.filename ?? "file"}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Rendered inside <PromptInput> so it can read attachment state. */
+function ComposerExtras() {
+  const attachments = usePromptInputAttachments();
+  return (
+    <>
+      {attachments.files.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-3 pt-3">
+          {attachments.files.map((file) => (
+            <span
+              key={file.id}
+              className="group inline-flex items-center gap-1.5 rounded-full border border-border bg-accent/60 px-3 py-1 text-xs"
+            >
+              {file.mediaType.startsWith("image/") ? (
+                <img src={file.url} alt={file.filename} className="size-5 rounded-full object-cover" />
+              ) : (
+                <Paperclip className="size-3" />
+              )}
+              <span className="max-w-32 truncate">{file.filename}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${file.filename}`}
+                onClick={() => attachments.remove(file.id)}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function AttachButton() {
+  const attachments = usePromptInputAttachments();
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      aria-label="Add photos or files"
+      className="rounded-full"
+      onClick={() => attachments.openFileDialog()}
+    >
+      <Paperclip className="size-4" />
+    </Button>
+  );
 }
 
 function ChatPage() {
@@ -110,6 +196,10 @@ function ChatPage() {
   const [persona, setPersona] = useState("balanced");
   const [displayName, setDisplayName] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [attachmentMeta, setAttachmentMeta] = useState<Record<string, AttachmentMeta[]>>({});
   const activeChatRef = useRef<string | null>(null);
   activeChatRef.current = activeChat;
 
@@ -134,6 +224,15 @@ function ChatPage() {
     if (!loading && !user) navigate({ to: "/auth" });
   }, [user, loading, navigate]);
 
+  const refreshAvatarUrl = useCallback(async (path: string | null) => {
+    if (!path) {
+      setAvatarUrl(null);
+      return;
+    }
+    const { data } = await supabase.storage.from("avatars").createSignedUrl(path, 60 * 60);
+    setAvatarUrl(data?.signedUrl ?? null);
+  }, []);
+
   const loadChats = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
@@ -149,29 +248,42 @@ function ChatPage() {
     void (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("display_name,theme")
+        .select("display_name,theme,avatar_url")
         .eq("id", user.id)
         .maybeSingle();
       if (data?.display_name) setDisplayName(data.display_name);
       if (isThemeId(data?.theme)) setTheme(data.theme);
+      if (data?.avatar_url) {
+        setAvatarPath(data.avatar_url);
+        void refreshAvatarUrl(data.avatar_url);
+      }
     })();
-  }, [user, loadChats, setTheme]);
+  }, [user, loadChats, setTheme, refreshAvatarUrl]);
 
   const openChat = useCallback(
     async (chatId: string) => {
       setActiveChat(chatId);
       const { data } = await supabase
         .from("messages")
-        .select("id,role,content")
+        .select("id,role,content,attachments")
         .eq("chat_id", chatId)
         .order("created_at", { ascending: true });
+      const meta: Record<string, AttachmentMeta[]> = {};
       setMessages(
-        (data ?? []).map((row) => ({
-          id: row.id,
-          role: row.role === "assistant" ? "assistant" : "user",
-          parts: [{ type: "text" as const, text: row.content }],
-        })) as UIMessage[],
+        (data ?? []).map((row) => {
+          const atts = (row.attachments ?? []) as unknown as AttachmentMeta[];
+          if (atts.length > 0) meta[row.id] = atts;
+          return {
+            id: row.id,
+            role: row.role === "assistant" ? "assistant" : "user",
+            parts: [
+              ...atts.map((a) => ({ type: "file" as const, mediaType: a.mediaType, url: "", filename: a.filename })),
+              { type: "text" as const, text: row.content },
+            ],
+          };
+        }) as UIMessage[],
       );
+      setAttachmentMeta(meta);
     },
     [setMessages],
   );
@@ -179,23 +291,30 @@ function ChatPage() {
   function newChat() {
     setActiveChat(null);
     setMessages([]);
+    setAttachmentMeta({});
   }
 
   async function deleteChat(chatId: string) {
+    const { error: deleteError } = await supabase.from("messages").delete().eq("chat_id", chatId);
+    if (deleteError) {
+      toast.error("Couldn't delete that chat.");
+      return;
+    }
     await supabase.from("chats").delete().eq("id", chatId);
     if (activeChat === chatId) newChat();
     void loadChats();
+    toast.success("Chat deleted.");
   }
 
   async function onSubmit(message: PromptInputMessage) {
     const text = message.text.trim();
-    if (!text || !user) return;
+    if ((!text && message.files.length === 0) || !user) return;
 
     let chatId = activeChat;
     if (!chatId) {
       const { data, error: createError } = await supabase
         .from("chats")
-        .insert({ user_id: user.id, title: text.slice(0, 60) })
+        .insert({ user_id: user.id, title: text.slice(0, 60) || "File upload" })
         .select("id,title,updated_at")
         .single();
       if (createError || !data) {
@@ -208,14 +327,23 @@ function ChatPage() {
       setChats((prev) => [data, ...prev]);
     }
 
+    const atts: AttachmentMeta[] = message.files.map((f) => ({
+      filename: f.filename ?? "file",
+      mediaType: f.mediaType,
+    }));
+
     await supabase.from("messages").insert({
       chat_id: chatId,
       user_id: user.id,
       role: "user",
       content: text,
+      attachments: atts,
     });
 
-    sendMessage({ text }, { body: { persona } });
+    sendMessage(
+      { text: text || "Please look at the attached file(s).", files: message.files },
+      { body: { persona } },
+    );
   }
 
   async function saveTheme(next: string) {
@@ -237,6 +365,34 @@ function ChatPage() {
     );
   }
 
+  async function uploadAvatar(file: File) {
+    if (!user) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Please pick an image under 5 MB.");
+      return;
+    }
+    setUploadingAvatar(true);
+    const ext = file.name.split(".").pop() ?? "png";
+    const path = `${user.id}/avatar.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (uploadError) {
+      setUploadingAvatar(false);
+      toast.error("Couldn't upload your photo.");
+      return;
+    }
+    await supabase.from("profiles").update({ avatar_url: path }).eq("id", user.id);
+    setAvatarPath(path);
+    await refreshAvatarUrl(path);
+    setUploadingAvatar(false);
+    toast.success("Profile photo updated.");
+  }
+
   if (loading || !user) {
     return (
       <main className="flex min-h-screen items-center justify-center aurora">
@@ -245,6 +401,19 @@ function ChatPage() {
     );
   }
 
+  const settingsProps = {
+    theme,
+    onTheme: saveTheme,
+    persona,
+    onPersona: setPersona,
+    displayName,
+    onDisplayName: setDisplayName,
+    onSaveName: saveName,
+    savingName,
+    avatarUrl,
+    uploadingAvatar,
+    onUploadAvatar: uploadAvatar,
+  };
 
   return (
     <main className="relative flex h-screen overflow-hidden">
@@ -301,30 +470,49 @@ function ChatPage() {
                 >
                   {chat.title}
                 </button>
-                <button
-                  type="button"
-                  aria-label="Delete chat"
-                  className="opacity-0 transition-opacity group-hover:opacity-100"
-                  onClick={() => void deleteChat(chat.id)}
-                >
-                  <Trash2 className="size-4 text-muted-foreground hover:text-destructive" />
-                </button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Delete chat"
+                      className="opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <Trash2 className="size-4 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        “{chat.title}” and all its messages will be permanently removed.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => void deleteChat(chat.id)}>
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             ))}
             {chats.length === 0 && (
               <p className="px-3 py-2 text-sm text-muted-foreground">No conversations yet.</p>
             )}
           </div>
-          <SettingsDialog
-            theme={theme}
-            onTheme={saveTheme}
-            persona={persona}
-            onPersona={setPersona}
-            displayName={displayName}
-            onDisplayName={setDisplayName}
-            onSaveName={saveName}
-            savingName={savingName}
-          />
+          <div className="mt-3 flex items-center gap-2">
+            <Avatar className="size-9 border border-border">
+              {avatarUrl ? <AvatarImage src={avatarUrl} alt="Your profile photo" /> : null}
+              <AvatarFallback className="text-xs">
+                {(displayName || user.email || "N").slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{displayName || "You"}</p>
+            </div>
+            <SettingsDialog {...settingsProps} compact />
+          </div>
         </div>
       </aside>
 
@@ -351,33 +539,6 @@ function ChatPage() {
               {activeChat ? chats.find((c) => c.id === activeChat)?.title : "New conversation"}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            {!sidebarOpen && (
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="New chat"
-                className="md:hidden"
-                onClick={newChat}
-              >
-                <MessageSquarePlus className="size-4" />
-              </Button>
-            )}
-            <div className="md:hidden">
-              <SettingsDialog
-                theme={theme}
-                onTheme={saveTheme}
-                persona={persona}
-                onPersona={setPersona}
-                displayName={displayName}
-                onDisplayName={setDisplayName}
-                onSaveName={saveName}
-                savingName={savingName}
-                compact
-              />
-            </div>
-          </div>
-
         </header>
 
         <Conversation>
@@ -400,7 +561,7 @@ function ChatPage() {
                     <button
                       key={s}
                       type="button"
-                      onClick={() => void onSubmit({ text: s } as PromptInputMessage)}
+                      onClick={() => void onSubmit({ text: s, files: [] } as PromptInputMessage)}
                       className="rounded-2xl border border-border bg-surface/60 px-4 py-3 text-left text-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:bg-accent"
                     >
                       {s}
@@ -412,6 +573,9 @@ function ChatPage() {
               messages.map((message) => (
                 <Message from={message.role} key={message.id} className="rise">
                   <MessageContent>
+                    <AttachmentChips
+                      files={filesOf(message).length > 0 ? filesOf(message) : (attachmentMeta[message.id] ?? [])}
+                    />
                     <MessageResponse>{textOf(message)}</MessageResponse>
                   </MessageContent>
                 </Message>
@@ -435,11 +599,14 @@ function ChatPage() {
         <div className="mx-auto w-full max-w-3xl px-4 pb-6">
           <PromptInput
             onSubmit={onSubmit}
+            multiple
             className="rounded-3xl border-border bg-surface/70 backdrop-blur-xl transition-shadow duration-300 focus-within:glow-ring"
           >
+            <ComposerExtras />
             <PromptInputTextarea placeholder="Message Nova…" />
             <PromptInputFooter>
               <PromptInputTools>
+                <AttachButton />
                 <Select value={persona} onValueChange={setPersona}>
                   <SelectTrigger className="w-36 rounded-full">
                     <SelectValue />
@@ -460,7 +627,6 @@ function ChatPage() {
             Nova can make mistakes. Double-check anything important.
           </p>
         </div>
-
       </section>
     </main>
   );
@@ -475,6 +641,9 @@ function SettingsDialog({
   onDisplayName,
   onSaveName,
   savingName,
+  avatarUrl,
+  uploadingAvatar,
+  onUploadAvatar,
   compact,
 }: {
   theme: string;
@@ -485,12 +654,16 @@ function SettingsDialog({
   onDisplayName: (value: string) => void;
   onSaveName: () => void;
   savingName: boolean;
+  avatarUrl: string | null;
+  uploadingAvatar: boolean;
+  onUploadAvatar: (file: File) => void;
   compact?: boolean;
 }) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant={compact ? "ghost" : "outline"} size={compact ? "sm" : "default"} className={compact ? "" : "mt-3 w-full"}>
+        <Button variant={compact ? "ghost" : "outline"} size={compact ? "icon" : "default"} className={compact ? "rounded-full" : "mt-3 w-full"} aria-label="Settings">
           <Settings className="size-4" />
           {!compact && "Settings"}
         </Button>
@@ -498,8 +671,43 @@ function SettingsDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>Your name, the look of the app, and how Nova replies.</DialogDescription>
+          <DialogDescription>Your photo, name, the look of the app, and how Nova replies.</DialogDescription>
         </DialogHeader>
+
+        <div className="space-y-2">
+          <Label>Profile photo</Label>
+          <div className="flex items-center gap-3">
+            <Avatar className="size-14 border border-border">
+              {avatarUrl ? <AvatarImage src={avatarUrl} alt="Your profile photo" /> : null}
+              <AvatarFallback>
+                {(displayName || "N").slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onUploadAvatar(file);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploadingAvatar}
+            >
+              {uploadingAvatar ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ImagePlus className="size-4" />
+              )}
+              {uploadingAvatar ? "Uploading…" : "Choose photo"}
+            </Button>
+          </div>
+        </div>
 
         <div className="space-y-2">
           <Label htmlFor="display-name">Display name</Label>
